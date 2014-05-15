@@ -1,0 +1,213 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+  <TITLE>GLgraph</TITLE>
+  <STYLE>
+    body, table
+    { font-family : Arial, Helvetica, sans-serif;
+      font-size   : 14px;
+      background  : white; }
+  </STYLE>
+</HEAD>
+<BODY>
+
+
+<CENTER>
+<H1>GLgraph</H1>
+<H3>An OpenGL based function grapher for Linux</H3>
+<H3>
+</H3>
+</CENTER>
+<HR>
+
+
+<H3><B><A NAME=1>1. Introduction</A></B></H3>
+
+<P><B><A NAME=1.1>1.1. About</A></B><BR>
+  GLgraph is my first Perl program and is a ported Version of my old Worm(g).</P>
+
+<P><B><A NAME=1.2>1.2. Description</A></B><BR>
+  GLgraph visualize mathematical functions. It can handle 3 unknowns 
+  (x,z,t) and can produce a 4D function with 3 space and 1 time dimension.
+  </P>
+
+<P><B><A NAME=1.2>1.3. History</A></B><BR>
+  It began with my first program Worm(g)... Because I didn't find a 
+  mathematical function visualiser which fit my needs, I started to write
+  my own in pascall (Worm(g)). GLgraph is a perl/OpenGL portation of my 
+  first Worm(g) program. It's result was a complete new structured program.
+  <P>
+
+
+<BR>
+<H3><B><A NAME=2>2. Installation</A></B></H3>
+
+<P><B><A NAME=2.1>2.1. Requirements</A></B><BR>
+  GLgraph needs:
+  <UL>
+    <LI>libopengl-perl/perl-OpenGL &gt;= 0.5</LI>
+    <LI>libmath-basecalc-perl</LI>
+    <LI>libtime-hires-perl</LI>
+    <LI>Imagemagick (optional, for screenshots)</LI>
+  </UL>
+  I only tested it on my PC:
+  <UL>
+    <LI>Pentium III 600</LI>
+    <LI>Matrox G400 32 MB DH</LI>
+    <LI>Linux 2.4.18</LI>
+    <LI>Debian (sid)</LI>
+    <LI>libopengl-perl 0.54
+      <UL>
+        <LI>Perl 5.6.1</LI>
+        <LI>glutg3 3.7</LI>
+        <LI>XFree86 4.1.0 (xlibmesa3)</LI>
+      </UL></LI>
+    <LI>libmath-basecalc-perl 1.009</LI>
+    <LI>libtime-hires-perl 1.20</LI>
+    <LI>imagemagick (optional, for screenshots) 5.4.7.1</LI>
+  </UL></P>
+
+
+<BR>
+<H3><B><A NAME=3>3. Features</A></B></H3>
+
+<P><B><A NAME=3.1>3.1. Functions</A></B><BR>
+  You can add your own functions to the default ones.
+  All math functions of Perl's math module can be used (even trigonometrical).
+  PI is built in too and the function interval can contain complex solutions.</P>
+
+<P><B><A NAME=3.2>3.2. Output modes</A></B><BR>
+ There are 3 Modes:
+  <UL>
+    <LI>2D (<CODE>-2d</CODE>)        : 3D Graph (very fast ;)</LI>
+    <LI>3D Wire (<CODE>-wire</CODE>) : 3D Wireframe model</LI>
+    <LI>3D Solid (<CODE>-3d</CODE>)  : Default, solid 3D model (slowest)</LI>
+  </UL>
+  All use OpenGL. 3D Solid uses the accelerated TRIANGLE methode.
+  GLgraph has preview capabilities too.</P>
+
+<P><B><A NAME=3.3>3.3. Axis</A></B><BR>
+  There are 4 Modes:
+  <UL>
+    <LI>no axis (<CODE>-noaxis</CODE>)   : Default</LI>
+    <LI>normal (<CODE>-axis 1</CODE>)    : Changes automaticaly from 2D to 3D</LI>
+    <LI>3D square (<CODE>-axis 2</CODE>) : Draws a base square</LI>
+    <LI>3D cube (<CODE>-axis 3</CODE>)   : Draws a base cube</LI>
+  </UL></P>
+
+<P><B><A NAME=3.4>3.4. Time</A></B><BR>
+  The time can also be used as a parameter. But to get acceptable fps the
+  resolution has to be lowered.</P>
+
+<P><B><A NAME=3.5>3.5 Animation</A></B><BR>
+  After one time periode, the saved display lists are being used to display the frames.
+  This leads to a tremendous speedup (animation). The flimmering is caused by the clear
+  call which can be deactivated with the <CODE>-noclear</CODE> option (looks ugly).
+  Large time and space resolutions can lead to crashs/freezes (memory), don't use this
+  methode in this case (<CODE>-noanim</CODE>).<BR>
+  See <A HREF="#3.8">bellow</A> to <I>save</I> the function as an animation.</P>
+
+<P><B><A NAME=3.6>3.6. Color</A></B><BR>
+  There are 3 modes:
+  <UL>
+    <LI>no colors (<CODE>-nocolors</CODE>)    : Fastest mode ;)</LI>
+    <LI>color mode 1 (<CODE>-colors 1</CODE>) : Default, my own iterative color mode</LI>
+    <LI>color mode 2 (<CODE>-colors 2</CODE>) : Absolute color scale (slow)</LI>
+  </UL></P>
+
+<P><B><A NAME=3.7>3.7 Preview mode</A></B><BR>
+  The preview mode can be toggled with the <CODE>p</CODE> key. It uses a resolution of 20
+  (x and z) and can be used to avoid intense calculation while trivial changes.</P>
+
+<P><B><A NAME=3.8>3.8 Screenshots</A></B><BR>
+  Glgraph uses Imagemagick's import over a system call to take screenshots.
+  All Imagemagick output formats are therefore supported. A non-default
+  output name (default is image.jpg) can be specified with the <CODE>-o</CODE> option.
+  A screenshot can be taken using the <CODE>m</CODE> key.
+  To create an info file with a function description, use the <CODE>-i</CODE> option.
+  If no extension in the output name is present, just the info file will be created.<BR>
+  To create a movie of the whole function, do as follows:
+  <OL>
+    <LI>Save every frame to the files <CODE>movie_00xx.jpg</CODE>:<BR>
+      <CODE>glgraph -save &lt;options&gt; -o movie.jpg</CODE></LI>
+    <LI>Create a MJPEG or directly a AVI/MPG file, using the created images (with
+      <A HREF="http://mplayerhq.hu/">MEncoder</A> for example):<BR>
+      <CODE>mencoder -vop scale movie\*.jpg -mf on:fps=&lt;fps&gt; -ovc lavc -lavcopts vcodec=mjpeg -o movie.avi<BR>
+      or<BR>
+      <CODE>mencoder -vop scale movie\*.jpg -mf on:fps=&lt;fps&gt; -ovc divx4 -o movie.avi<BR></LI>
+  </OL></P>
+
+
+<BR>
+<H3><B><A NAME=4>4. Usage</A></B></H3>
+
+<P><B><A NAME=4.1>4.1. Synopsis</A></B><BR>
+  <CODE>glgraph [options] 'function1' 'function2' ...</CODE></P>
+
+<P><B><A NAME=4.2>4.2. Command line options</A></B><BR>
+  See <CODE>glgraph -h</CODE> for a list of available options.</P>
+
+<P><B><A NAME=4.3>4.3. Control from keyboard</A></B><BR>
+  See <CODE>glgraph -h</CODE> for a list of available keys.</P>
+
+<P><B><A NAME=4.4>4.4. Examples</A></B><BR>
+  Display the default builtin GLgraph functions<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph</CODE><BR>
+  The same without colors and a wireframe model<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph -wire -nocolors -xzres 20</CODE><BR>
+  A 2D Graph (color mode 2) of a normal parabola<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph -2d -colors 2 -notime -xres 600 -nocolors 'x*x'</CODE><BR>
+  The same with no colors and axis<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph -axis 1 -ax_size 1 -2d -notime -xres 600 -nocolors 'x*x'</CODE><BR>
+  High quality picture of the default function<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph -xzres 150 -tmin 1 -notime -cfact 1 -cconst 0.1</CODE><BR>
+  Create info file of the default function<BR>
+    &nbsp;&nbsp;&nbsp;&nbsp;<CODE>glgraph -i -o function1</CODE><BR></P>
+
+<BR>
+<H3><B><A NAME=5>5. FAQs</A></B></H3>
+
+<P><B>Q:</B> I use perl-OpenGL 0.4 and get an error about <CODE>OpenGL::EXPORT_TAGS</CODE>.<BR>
+  <B>A:</B> Perl-OpenGL 0.4 seems to be incompatible with GLgraph (see
+  libopengl-perl's README file for more details). Upgrade to perl-OpenGL >= 0.5.</P>
+
+
+<BR>
+<H3><B><A NAME=6>6. Authors</A></B></H3>
+
+<P>Jonas Jermann (g0th) &lt;<A HREF="mailto:jjermann@gmx.net">jjermann@gmx.net</A>&gt;
+  <UL>
+    <LI>main developer</LI>
+  </UL></P>
+<P>David Gunzinger (pfy) &lt;<A HREF="mailto:david@zhadum.ch">david@zhadum.ch</A>&gt;
+  <UL>
+    <LI>Syntax introduction/help of OpenGl/glut/Perl</LI>
+    <LI>Second color-mode</LI>
+    <LI>eval optimations!</LI>
+    <LI>Structure help</LI>
+  </UL></P>
+<P>Addi (?)
+  <UL>
+    <LI>Screenshot code</LI>
+    <LI>Help with OpenGL</LI>
+  </UL></P>
+
+
+<BR>
+<H3><B><A NAME=7>7. Law</A></B></H3>
+
+<P><B><A NAME=7.1>7.1. License</A></B><BR>
+  GLgraph is under GPL v2 license. Read the file
+  COPYING
+  for more details.
+  </P>
+
+<P><B><A NAME=7.2>7.2. Standard Disclaimer</A></B><BR>
+  Use only at your own risk! There may be errors and inaccuracies that
+  could be damaging to your system or your eye. Proceed with caution,
+  and although this is highly unlikely, we don't take any responsibility
+  for that!</P>
+
+
+</BODY>
+</HTML>

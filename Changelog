@@ -1,0 +1,78 @@
+GLgraph v0.2.6  (Nov 09 2002)
+  - optimations! (over 2 times faster
+    with complex functions)
+  - some cosmetics
+
+GLgraph v0.2.5  (Aug xx 2002)
+  - new screenshot code (uses Imagemagick)
+  - many bugfixes (removed warnings)
+  - homepage restructured
+  
+GLgraph v0.2.4  (Jul 11 2002)
+  - Animation (using display lists)
+  - better fps code (still relative)
+  - new reset code
+  - cleanup
+
+GLgraph v0.2.3  (Jul 06 2002)
+  - many bugfixes
+  - resize function
+  - optimations (use display lists)
+  - uses libtime-hires-perl:
+    maximal fps code
+    more comfortable keyboard navigation
+  - capital letter keys detected
+  - experimental range changing (BUGGY)
+  - free CPU time in notime mode from 100% to ~0%
+
+GLgraph v0.2.2  (Jul 04 2002)
+  - preview mode
+  - bugfixes (notime)
+  - optimations
+  - new keys:
+    90° rotation
+    new reset (for 2D)
+  - better 2D view mode
+
+GLgraph v0.2.1  (Jul 02 2002)
+  - split up in several files
+
+GLgraph v0.2.0  (Jun 26 2002)
+  - options -> hash
+  - cleanup
+  - new reset function
+  - axis
+
+GLgraph v0.1.6  (Jun 26 2002)
+  - more options
+  - bugfixes
+  - cleanup
+
+GLgraph v0.1.5  (Jun 25 2002)
+  - command line options
+  - restructure
+  - more ;)
+
+GLgraph v0.1.4  (Jun 24 2002)
+  - optimations! (avoiding eval)
+
+GLgraph v0.1.3prex  (Apr 13-17 2002)
+  - restructure
+  - cleanup
+
+GLgraph v0.1.2  (Apr 10 2002)
+  - wireframe mode
+
+GLgraph v0.1.1  (Mar 22 2002)
+  - new color function by pfy
+  - cleanup
+
+GLgraph v0.1.0  (Mar 18 2002)
+  - first "release"
+
+GLgraph v0.0.1-v0.0.7 (Mar 4-9 2002)
+  - basic functions
+  - reaching level of Worm(g)
+
+GLgraph v0.0.1prex  (Mar 03-04 2002)
+  - first attempts failed

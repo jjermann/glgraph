@@ -1,0 +1,45 @@
+TODO
+
+Cord axis (several sorts)               <PARTLY DONE>
+Time code:                              <EDITING>
+  max fps                               <DONE>
+  -> more accurate!!! (kernel prob)     <PARTLY DONE>
+  time code based on absolute not
+    relative value
+  fps in calculation mode is wrong
+Optimize!!!:                            <EDITING>
+  Display lists!!!!                     <DONE>
+shtg better than gluLookAt() for reset
+What about Swap Buffer????
+New structure!
+port to opengl 2.0, gtk
+
+
+
+IDEAS
+
+xmax etc. changeable                    <EDITING>
+menus (glut)                            <EDITING>
+Geometry -> hash ?
+more configurable screenshot, axis, etc
+animation save
+Configuration files
+eval around z calculation?
+Stereogl, blending, light, more
+UI:
+  gnome
+  gtk
+  opengl
+  osd
+  mouse?
+Complex functions
+fractals?
+
+
+
+BUGS
+
+Translation effects                     <SLOW>
+flimmer part2!! (clear graph)
+notime enters too late
+left point in 2d mode

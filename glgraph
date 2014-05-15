@@ -1,0 +1,976 @@
+#!/usr/bin/perl
+#
+# Name:		GLgraph
+#
+# Version:	0.2.5
+#
+# License:	GPL
+#
+# 2002/05/08	Jonas Jermann <jjermann@gmx.ch>
+#               David Gunzinger <david@zhadum.ch>
+#
+#
+################################################################################
+#
+# M O D U L E S
+
+use OpenGL ":old",":glutfunctions",":gluconstants",":functions";
+use strict; no strict "subs";
+eval {use Math::Trig;} or warn "No trigonometrical function support found...\n";
+use Getopt::Long;
+use Time::HiRes qw (gettimeofday tv_interval usleep);
+
+################################################################################
+#
+# M A I N
+
+# Variables
+use vars qw(%options %time @lookat @geometry @tri2d @tri3d @yreal $xres_real $zres_real $time_real $n $z $t $zsize $tsize $PI);
+
+options();
+commandline();
+init();
+if ($options{mode} <=1) { reset_all(7); }
+else { reset_all(15); }
+glutMainLoop;
+
+################################################################################
+#
+# S U B
+
+# VERSION
+sub version {
+    my $version_string =  "0.2.6";
+    print "GLgraph version $version_string\n";
+    exit;
+}
+
+
+# RESIZE (reset -> only 2)
+sub resize {
+    ($options{width},$options{height})=@_;
+    glViewport(0, 0, $options{width}, $options{height});
+    if ($options{mode} <=1 ) { reset_all(4); }
+    else { reset_all(12); }
+}
+
+
+# RESET
+sub reset_all {
+    # Variables (Space)
+    if ($_[0] & 1) {
+        $z = $options{zmin};
+        $zsize = 0;
+    }
+
+    # Variables (Time)
+    if ($_[0] & 2) {
+        $t = $options{tmin};
+        $tsize = 0;
+    }
+            
+    # GL reinit
+    if ($_[0] & 4) {
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glOrtho($options{xmin},$options{xmax},$options{ymin},$options{ymax},$options{zmin},$options{zmax});
+    }
+    
+    # Standard view
+    if ($_[0] & 8) {
+        if (@lookat) { gluLookAt(@lookat); }
+        else {
+            glRotatef(50, 5, -0.5, 0.0);
+            glScalef(0.8,0.8,0.8);
+        }
+    }
+
+    # Delete all display lists
+    if ($_[0] & 16) {
+        glDeleteLists(1,$options{tres});
+    }
+}
+
+
+# MAIN DISPLAY
+sub display {
+    if ($_[0]) {
+        if (!$options{anim}) { reset_all(16); }
+
+        # calculate display list if non-existing
+        if (!glIsList($tsize+1)) {
+            glNewList(($tsize+1), GL_COMPILE);
+                if ($options{clearg}) { glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); }
+                else { glClear(GL_DEPTH_BUFFER_BIT); }
+                glColor3f(0.8,0.8,0.8);
+                if    ($options{mode} == 1) { display_2d(); }
+                elsif ($options{mode} == 2) { display_3dwire(); }
+                elsif ($options{mode} == 3) { display_3d(); }
+                if    (($options{axis} > 0) and ($options{mode} > 0)) { display_axis(); }
+            glEndList();
+        }
+
+        # fps corrections
+        if (($time{frame}) and (tv_interval($time{frame})<(1/$options{fps}))) {
+            select(undef, undef, undef, (1/$options{fps}-tv_interval($time{frame})));
+        }
+
+        # display and flush
+        glCallList($tsize+1);
+        glFlush();
+        glutSwapBuffers();
+
+        $time{frame} = [gettimeofday];
+
+        # Save all frames and exit if specified
+        screenshot() if ($options{save});
+        exit() if (($options{save}) and (($tsize+1)==$options{tres}));
+    }
+}
+
+
+# PREVIEW
+sub preview {
+    if (($xres_real) and (($_[0]==0) or ($_[0]==2))) {
+        $options{xres}=$xres_real;
+        $options{zres}=$zres_real;
+        $xres_real=0;
+        $zres_real=0;
+        reset_all(1);
+    }
+    elsif ((!$xres_real) and (($_[0]==1) or ($_[0]==2))) {
+        $xres_real=$options{xres};
+        $zres_real=$options{zres};
+        $options{xres}=20;
+        $options{zres}=20;
+        reset_all(1);
+    }
+    elsif (($_[0]==3) and $xres_real) { return 1; }
+    elsif (($_[0]==3) and !$xres_real) { return 0; }
+}
+
+
+
+# KEYBOARD
+sub keyboard {
+    # deactivate time function (activated in idle again)
+    if (($options{time}!=0) and (!$time_real)) {
+        $time_real=$options{time};
+        $options{time}=0;
+    }
+    $time{key} = [gettimeofday];
+
+    my ($key) = @_; 
+    $key = chr($key);
+    
+    # Misc
+    if   ($key=~/q/){ exit(); }
+    elsif($key=~/m/){ screenshot(); }
+    elsif($key=~/3/){
+        $options{cfact}=$options{cfact}*0.98;
+        if (glIsList($tsize+1)) { reset_all(17); }
+        else {
+            reset_all(16);
+            glutPostRedisplay();
+        }
+    }
+    elsif($key=~/4/){
+        $options{cfact}=$options{cfact}*1.02;
+        reset_all(17);
+        if (glIsList($tsize+1)) { reset_all(17); }
+        else {
+            reset_all(16);
+            glutPostRedisplay();
+        }
+    }
+
+    # Preview
+    elsif($key=~/p/){ reset_all(16); preview(2); }
+    
+    # Function change
+    elsif($key=~/n/){ $n++; reset_all(17); }
+    elsif(($key=~/b/) and ($n > 0)){ $n--; reset_all(17); }
+
+    # Mode change
+    elsif(($key=~/1/) and ($options{mode}>0)){ $options{mode}--; reset_all(17); }
+    elsif(($key=~/2/) and ($options{mode}<3)){ $options{mode}++; reset_all(17); }
+    elsif($key=~/c/) { 
+        $options{color}++;
+        if ($options{color} >=3) { $options{color}=0; }
+        reset_all(17);
+        #if (glIsList($tsize+1)) { reset_all(17); }
+        #else {
+        #    reset_all(16);
+        #    glutPostRedisplay();
+        #}
+    }
+    elsif($key=~/t/) { 
+        if (!$time_real) { $options{time}=1; }
+        else { $options{time}=0; $time_real=(); }
+    }
+
+    # Extend : BUGGY
+    elsif($key=~/R/) { $options{xmin}*=0.9; $options{xmax}*=0.9; $options{ymin}*=0.9; $options{ymax}*=0.9; $options{zmin}*=0.9; $options{zmax}*=0.9; reset_all(31); }
+    elsif($key=~/E/) { $options{xmin}*=1.1; $options{xmax}*=1.1; $options{ymin}*=1.1; $options{ymax}*=1.1; $options{zmin}*=1.1; $options{zmax}*=1.1; reset_all(31); }
+    elsif($key=~/D/) { $options{xmin}-=($options{xmax}-$options{xmin})*0.1; $options{xmax}-=($options{xmax}-$options{xmin})*0.1; reset_all(31); }
+    elsif($key=~/A/) { $options{xmin}+=($options{xmax}-$options{xmin})*0.1; $options{xmax}+=($options{xmax}-$options{xmin})*0.1; reset_all(31); }
+    elsif($key=~/X/) { $options{ymin}-=($options{ymax}-$options{ymin})*0.1; $options{ymax}-=($options{ymax}-$options{ymin})*0.1; reset_all(31); }
+    elsif($key=~/Y/) { $options{ymin}+=($options{ymax}-$options{ymin})*0.1; $options{ymax}+=($options{ymax}-$options{ymin})*0.1; reset_all(31); }
+    elsif($key=~/S/) { $options{zmin}-=($options{zmax}-$options{zmin})*0.1; $options{zmax}-=($options{zmax}-$options{zmin})*0.1; reset_all(31); }
+    elsif($key=~/W/) { $options{zmin}+=($options{zmax}-$options{zmin})*0.1; $options{zmax}+=($options{zmax}-$options{zmin})*0.1; reset_all(31); }
+
+    # Seeking
+    elsif($key=~/x/) { 
+        reset_all(1);
+        if (($options{time} > 0) and (($tsize+1) <= ($options{tres}-5))) { $t += 5*($options{tmax}-$options{tmin})/($options{tres}-1); $tsize=$tsize+5; }
+        elsif (($tsize+1) < $options{tres}) { $t += ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize++; }
+        if (glIsList($tsize+1)) {
+            glCallList($tsize+1);
+            glFlush();
+        }
+    }
+    elsif($key=~/y/) { 
+        reset_all(1);
+        if (($options{time} > 0) and ($tsize >= 5)) { $t -= 5*($options{tmax}-$options{tmin})/($options{tres}-1); $tsize=$tsize-5; }
+        elsif ($tsize > 0) { $t -= ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize--; }
+        if (glIsList($tsize+1)) {
+            glCallList($tsize+1);
+            glFlush();
+        }
+    }
+
+    # Resolution
+    elsif($key=~/u/){ 
+        if (preview(3)) { $xres_real+=1; $zres_real+=1; }
+        else { $options{xres}+=1; $options{zres}+=1; reset_all(17); }
+        # if (preview(3)) { $xres_real=int($xres_real*1.1+0.9); $zres_real=int($zres_real*1.1+0.9); }
+        # else { $options{xres}=int($options{xres}*1.1+0.9); $options{zres}=int($options{zres}*1.1+0.9); reset_all(17); }
+    }
+    elsif($key=~/z/){
+        if (preview(3) and (($xres_real>=3) and ($zres_real>=3))) { $xres_real-=1; $zres_real-=1; }
+        elsif (($options{xres}>=3) and ($options{zres}>=3)) { $options{xres}-=1; $options{zres}-=1; reset_all(17); }
+        # if (preview(3)) { $xres_real=int($xres_real*0.91+0.2); $zres_real=int($zres_real*0.91+0.2); }
+        # else { $options{xres}=int($options{xres}*0.91+0.2); $options{zres}=int($options{zres}*0.91+0.2); reset_all(17); }
+    }
+    elsif($key=~/j/){ $options{tres}=int($options{tres}*1.1+0.9); reset_all(19); }
+    elsif($key=~/h/){ $options{tres}=int($options{tres}*0.91+0.2); reset_all(19); }
+    # elsif($key=~/j/){ $options{tres}+=1; reset_all(19); }
+    # elsif($key=~/h/){ if ($options{tres}>=2) { $options{tres}-=1; reset_all(19); } }
+
+    # Rotation
+    elsif($key=~/w/){ glRotatef(-3, 1, 0, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/s/){ glRotatef(3, 1, 0, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/a/){ glRotatef(-3, 0, 1, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/d/){ glRotatef(3, 0, 1, 0); glCallList($tsize+1); glFlush(); }
+
+    # Translation
+    elsif($key=~/\ü/){ glTranslatef(0, 0.5, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/\ä/){ glTranslatef(0, -0.5, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/\ö/){ glTranslatef(-0.5, 0, 0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/\$/){ glTranslatef(0.5, 0, 0); glCallList($tsize+1); glFlush(); }
+
+    # Scaling
+    elsif($key=~/e/){ glScalef(0.91,0.91,0.91); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/r/){ glScalef(1.1,1.1,1.1); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/Z/){ glScalef(1,0.91,1); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/U/){ glScalef(1,1.1,1); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/H/){ glScalef(0.91,1,1); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/J/){ glScalef(1.1,1,1); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/N/){ glScalef(1,1,0.91); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/M/){ glScalef(1,1,1.1); glCallList($tsize+1); glFlush(); }
+
+    # Position
+    elsif($key=~/0/){ reset_all(4); }
+    elsif($key=~/_/){ reset_all(12); }
+    elsif($key=~/'/){ reset_all(31); }
+    elsif($key=~/9/){ glRotatef(90,1,0,0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/8/){ glRotatef(90,0,1,0); glCallList($tsize+1); glFlush(); }
+    elsif($key=~/7/){ glRotatef(90,0,0,1); glCallList($tsize+1); glFlush(); }
+}
+
+
+# SPECIAL KEYBOARD
+sub special_keyboard {
+    if (($options{time}!=0) and (!$time_real)) {
+        $time_real=$options{time};
+        $options{time}=0;
+    }
+    $time{key} = [gettimeofday];
+
+    my ($key) = @_; 
+
+    # Special keys
+    if   ($key==GLUT_KEY_LEFT){ reset_all(4); }
+    elsif($key==GLUT_KEY_RIGHT){ reset_all(31); }
+    elsif($key==GLUT_KEY_UP){ }
+    elsif($key==GLUT_KEY_DOWN){ }
+    elsif($key==GLUT_KEY_F1){ }
+    elsif($key==GLUT_KEY_F2){ }
+    elsif($key==GLUT_KEY_F3){ }
+    elsif($key==GLUT_KEY_F4){ }
+    elsif($key==GLUT_KEY_F5){ }
+    elsif($key==GLUT_KEY_F6){ }
+    elsif($key==GLUT_KEY_F7){ }
+    elsif($key==GLUT_KEY_F8){ }
+    elsif($key==GLUT_KEY_F9){ }
+    elsif($key==GLUT_KEY_F10){ }
+    elsif($key==GLUT_KEY_F11){ }
+    elsif($key==GLUT_KEY_F12){ }
+    elsif($key==GLUT_KEY_PAGE_UP){ }
+    elsif($key==GLUT_KEY_PAGE_DOWN){ }
+    elsif($key==GLUT_KEY_HOME){ }
+    elsif($key==GLUT_KEY_END){ }
+    elsif($key==GLUT_KEY_INSERT){ }
+}
+
+
+
+# USAGE
+sub usage {
+print STDERR <<EOF;
+
+Usage: glgraph [options] 'function1' 'function2' ...
+
+options:
+  function         Function: f(x,z,t)=function
+  -(no)fs          Fullscreen                                (ON)
+  -geometry        Window Geometry                           (1024x768+0+0)
+  -wid             Window Id                                 ("graph window")
+  -noclear         Don't clear the screen (fixes flimmering) (OFF)
+  -noanim          No animation mode (for high resolutions)  (OFF)
+  -nograph         Don't draw just calculate
+  -2d              2D Graph
+  -wire            3D Graph: Wireframe
+  -3d              3D Graph: Solid                           (DEFAULT)
+  -(no)axis        Axis mode                                 ( 0)
+  -ax_step         Step size for axis                        ( 1)
+  -ax_size         Size of lines (1 for grid)                (0.01)
+  -(no)time        Time Graph                                (ON)
+  -(no)colors      Color Mode (0=nocolors, 1:mode1, 2:mode2) ( 1)
+  -xmin            Beginning of x interval (Window)          (-5)
+  -xmax            Ending of x interval (Window)             ( 5)
+  -ymin            Beginning of y interval (Window)          (-5)
+  -ymax            Ending of y interval (Window)             ( 5)
+  -zmin            Beginning of z interval (Window)          (-5)
+  -zmax            Ending of z interval (Window)             ( 5)
+  -tmin            Beginning of t (time) interval (Window)   (-4)
+  -tmax            Ending of t (time) interval (Window)      ( 4)
+  -xres            Resolution of x axis (relevant dots)      (50)
+  -zres            Resolution of z axis (relevant dots)      (50)
+  -xzres           Space Resolution (xres and zres)
+  -tres            Resolution of time "axis" (frames)        (50)
+  -tsec            Resolution of time "axis" (seconds)       (2.0)
+  -cfact           Interval of color function                (0.8)
+  -cconst          Displace colors (0-1)                     (0.0)
+  -fps             Maximal fps                               (25)
+  -h, --help       Display this help message
+  -v, --version    Display GLgraph's version number
+
+keys:
+  q                Quit
+  _ and 0          Reset (default and hard)
+  m                Screenshot
+  w/a/s/d          Rotation (3°)
+  7/8/9            Rotation (90°)
+  ü/ö/ä/\$          Translation
+  e and r          Scaling
+  b and n          Change functions
+  1 and 2          Change graphic mode
+  3 and 4          Change color range
+  p                Toggle preview mode
+  c                Toggle color mode
+  t                Toggle time mode
+  y and x          Seeking
+  z and u          Change space resolution
+  h and j          Change time resolution
+
+EOF
+    exit 1;
+}
+
+# COMMAND LINE
+sub commandline {
+    GetOptions(
+        "help|h"             => \&usage,
+        "version|v"          => \&version,
+        "fullscreen|fs"      => \$options{fullscreen},
+        "nofullscreen|nofs"  => sub { $options{fullscreen}=0; },
+        "geometry=s"         => sub { @geometry=split(/[x+]/,"$_[1]"); },
+        "wid=s"              => \$options{wid},
+        "clear"              => sub { $options{clearg}=1; },
+        "noclear"            => sub { $options{clearg}=0; },
+        "save"               => sub { $options{save}=1; $options{anim}=0; $options{image_name}="image_all.jpg"; },
+        "nosave"             => sub { $options{save}=0; },
+        "o=s"                => \$options{image_name},
+        "info|i"             => sub { $options{info}=1; },
+        "anim"               => sub { $options{anim}=1; },
+        "noanim"             => sub { $options{anim}=0; },
+        "nograph"            => sub { $options{mode}=0; },
+        "mode"               => \$options{mode},
+        "2d"                 => sub { $options{mode}=1; },
+        "wire|3dwire"        => sub { $options{mode}=2; },
+        "lookat=s"           => sub { @lookat=split(/,/,"$_[1]"); },
+        "3d|3dsolid"         => sub { $options{mode}=3; },
+        "axis=i"             => \$options{axis},
+        "ax_step=f"          => \$options{ax_step},
+        "ax_size=f"          => \$options{ax_size},
+        "noaxis"             => sub { $options{axis}=0; },
+        "time"               => sub { $options{time}=1; },
+        "notime"             => sub { $options{time}=0; },
+        "colors=i"           => \$options{color},
+        "nocolors"           => sub { $options{color}=0; },
+        "xmin=f"             => \$options{xmin},
+        "xmax=f"             => \$options{xmax},
+        "ymin=f"             => \$options{ymin},
+        "ymax=f"             => \$options{ymax},
+        "zmin=f"             => \$options{zmin},
+        "zmax=f"             => \$options{zmax},
+        "tmin=f"             => \$options{tmin},
+        "tmax=f"             => \$options{tmax},
+        "xres=i"             => \$options{xres},
+        "zres=i"             => \$options{zres},
+        "xzres=i"            => sub { $options{xres}=$_[1];$options{zres}=$_[1]; },
+        "fps=f"              => \$options{fps},
+        "tres=i"             => \$options{tres},
+        "tsec=f"             => sub { $options{tres}=int($_[1]*$options{fps}); },
+        "cfact=f"            => \$options{cfact},
+        "cconst=f"           => \$options{cconst},
+    ) || usage();
+
+    # Add command line functions
+    @yreal = (@ARGV, @yreal);
+    for (@yreal) { $_ =~ s/(?<!\w)([xzt])(?!\w)/\$$1/g; }
+    for (@yreal) { $_ =~ s/PI/\$PI/g; }
+}
+
+
+
+# DEFAULT OPTIONS
+sub options {
+    # Init variables
+    $options{fullscreen} = 1;
+    @geometry = (1024,768,0,0);
+    $options{wid} = "graph window";
+    $options{save} = 0;
+    $options{image_name} = "image.jpg";
+    $options{info} = 0;
+    $n = 0;
+    $PI = 3.415926535898;
+
+    # TESTING OPTIONS
+    $options{clearg}=1;
+    $options{anim}=1;
+    
+    # Mode:
+    #   0   no graph
+    #   1   2d
+    #   2   3d wire
+    #   3   3d solid
+    # Time:
+    #   0   stable (no time)
+    #   1   time-function forward
+    #   2   time-function backward
+    # Color:
+    #   0   no colours
+    #   1   iterative color-mode 1
+    #   2   absolute color-mode 2 (pfy)
+    # Axis (values can be added): TODO
+    #   0   no axis
+    #   1   default (grid for ax_size 1)
+    #   2   3D square
+    #   3   3D cube
+    # View: TODO
+    #   0   orthographic viewing
+    #   1   perspective viewing
+    #   2   stereo viewing
+    #   3   2nd way of stereo viewing
+    
+    $options{mode}    = 3;
+    $options{time}    = 1;
+    $options{color}   = 1;
+    $options{axis}    = 0;
+    #$options{view}    = 0;
+
+    # Window
+    $options{xmin}    = -5;
+    $options{xmax}    = 5;
+    $options{ymin}    = -5;
+    $options{ymax}    = 5;
+    $options{zmin}    = -5;
+    $options{zmax}    = 5;
+    $options{tmin}    = -4;
+    $options{tmax}    = 4;
+
+    # Axis and misc
+    $options{xres}    = 50;
+    $options{zres}    = 50;
+    $options{tres}    = 50;
+    $options{fps}     = 25;
+    $options{cfact}   = 0.8;
+    $options{cconst}  = 0.0;
+    $options{ax_step} = 1;
+    $options{ax_size} = 0.01;
+
+    # Functions
+    $yreal[0] = '2*cos(t*sqrt(z*z+x*x)-2*atan(x/z))';
+    $yreal[1] = '(cos(t*sqrt(z*z+x*x))-sin(t*sqrt(z*z+x*x)))*exp(-sqrt(z*z+x*x))*5';
+    $yreal[2] = '0.02*z*sin(t*(z-x))-x*cos(z*x-t)';
+    $yreal[3] = '2*sin(x*x+z*z+t*t)';
+}
+
+
+
+# INIT
+sub init {
+    # Glut init
+    glutInit();
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
+    glutInitWindowSize($geometry[0],$geometry[1]);
+    glutInitWindowPosition($geometry[2],$geometry[3]);
+    glutCreateWindow($options{wid});
+    glutFullScreen() if ($options{fullscreen});
+
+    # Functions
+    glutKeyboardFunc(\&keyboard);
+    glutSpecialFunc(\&special_keyboard);
+    glutDisplayFunc(\&display);
+    glutReshapeFunc(\&resize);
+    glutIdleFunc(\&idle);
+    
+    glClearColor(0,0,0,0);
+    glEnable(GL_DEPTH_TEST); #TEST
+}    
+
+
+
+# COLOR
+sub scolor { 
+    if ($options{color} == 1) {
+        return(0.8*sin($_[0]*$options{cfact}+2*$options{cconst}*$PI),0.8*sin($_[0]*$options{cfact}+2*$PI/3+2*$options{cconst}*$PI),0.8*sin($_[0]*$options{cfact}+4*$PI/3+2*$options{cconst}*$PI));
+    }
+    elsif ($options{color} == 2) {
+        my ($r,$b,$g,$a);
+        $r=$b=$g=0; 
+        $a=(($_[0]-$options{ymin})/($options{ymax}-$options{ymin})*$options{cfact});
+
+        $r=$a*3;
+        $r=1 if ($r > 1);
+
+        $g=($a*3-1) if ((($a*3-1) > 0));
+        $g=1 if ($g > 1);
+
+        $b=($a*3-2) if ((($a*3-2) > 0));
+        $b=1 if ($b > 1);
+
+        return($r,$g,$b);
+    }
+}
+our $last_n;	#pfy,2.11.2002 for the new eval thingi
+our $last_mode; #for mode switch.... (2=2d, 3=3d)
+our $func_sub;	#eval thingi.....
+our ($x,$y,$z,$j,@tripar);
+
+# IDLE
+sub idle {
+    # activate time function again if 0.1 seconds passed after keyboard event
+    if (($time_real) and ((tv_interval($time{key}))>=0.1)) {
+        $options{time}=$time_real;
+        $time_real="";
+    }
+
+    # calculate frame if display list is non-existent
+    if (!glIsList($tsize+1)) {
+        # real calculation, can be 2d or 3d
+        if ($zsize < $options{zres}) {
+            if ($options{mode} == 1) {
+                idle_2d();
+                display(1);
+            }
+            if ($options{mode} >= 2) {
+                idle_3d();
+                if ($zsize == $options{zres}) {
+                    display(1);
+                }
+            }
+        }
+        # change time direction at the end
+        if ($zsize == $options{zres}) {
+           if ($options{time} == 0) { usleep (0.001); }
+           elsif (($options{time} == 1) and ($tsize < ($options{tres}-1))) { reset_all(1); $t += ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize++; }
+           elsif (($options{time} == 2) and ($tsize > 0)) { reset_all(1); $t -= ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize--; }
+           elsif ($options{time} == 1) { $options{time}=2; reset_all(1); $t -= ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize--; }
+           elsif ($options{time} == 2) { $options{time}=1; reset_all(1); $t += ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize++; }
+        }
+    }
+    # change time direction at the end
+    elsif ($options{time}) {
+        display(1);
+        if (($options{time} == 1) and ($tsize < ($options{tres}-1))) { reset_all(1); $t += ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize++; }
+        elsif (($options{time} == 2) and ($tsize > 0)) { reset_all(1); $t -= ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize--; }
+        elsif ($options{time} == 1) { $options{time}=2; reset_all(1); $t -= ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize--; }
+        elsif ($options{time} == 2) { $options{time}=1; reset_all(1); $t += ($options{tmax}-$options{tmin})/($options{tres}-1); $tsize++; }
+    }
+    # free cpu time if in notime mode...
+    else { usleep (0.001); }
+}
+
+
+# SUB IDLE (2D)
+sub idle_2d {
+    @tripar=();
+
+    $x=$options{xmin};
+    $j=0;
+    
+    # regenerate func_sub if necessary
+    if(($last_mode !=2) or ($last_n !=$n)){
+        geteval2();
+        $last_n=$n;
+        $last_mode=2;
+    }
+                                        
+    while ($j<=(2*$options{xres}-2)){
+        last if eval{&$func_sub};
+        $tripar[$j]=$x;
+        $tripar[$j+1]=0;
+        $x += ($options{xmax}-$options{xmin})/($options{xres}-1);
+        $j=$j+2;
+    }
+    
+    $j = 0;
+    $zsize = $options{zres} + 1;
+
+    unshift(@tri2d,@tripar); 
+    splice(@tri2d,(2*$options{xres})); 
+}    
+
+
+# SUB IDLE (3D)
+sub idle_3d {
+    @tripar=();
+
+    $x=$options{xmin};
+    $j=0;
+
+    # regenerate func_sub if necessary
+    if(($last_mode !=3) or ($last_n !=$n)){
+	geteval3();
+	$last_n=$n;
+	$last_mode=3;
+    }
+    
+    while ($j<=(3*$options{xres}-3)){
+        last if eval{&$func_sub};
+        $tripar[$j]=$x;
+        $tripar[$j+1]=0;
+        $tripar[$j+2]=$z;
+        $x += ($options{xmax}-$options{xmin})/($options{xres}-1);
+        $j=$j+3;
+    }
+    $j = 0;
+    $z += ($options{zmax}-$options{zmin})/($options{zres}-1); 
+    $zsize++; # IMPORTANT !!!!
+
+    unshift(@tri3d,@tripar); 
+    splice(@tri3d,(9*$options{xres}*$options{zres})); 
+}
+
+
+sub geteval2{
+    my $eval_block= '
+    while ($j<=(2*$options{xres}-2)) {
+    ';
+    $eval_block.= "\$y = $yreal[$n];";
+    $eval_block.= '
+        $tripar[$j]=$x;
+        $tripar[$j+1]=$y;
+        $x += ($options{xmax}-$options{xmin})/($options{xres}-1); 
+        $j=$j+2;
+    }
+    return 1;
+    ';
+
+    $func_sub= eval("sub{$eval_block};");
+}
+
+sub geteval3{
+    my $eval_block='
+    while ($j<=(3*$options{xres}-3)) {
+    ';
+    $eval_block.= "\$y = $yreal[$n];";
+    $eval_block.= '
+        $tripar[$j]=$x;
+        $tripar[$j+1]=$y;
+        $tripar[$j+2]=$z;
+        $x += ($options{xmax}-$options{xmin})/($options{xres}-1); 
+        $j=$j+3;
+    }
+    return 1;
+    ';
+
+    $func_sub= eval("sub{$eval_block}");
+}
+
+
+
+
+
+# SUB DISPLAY (2D)
+sub display_2d {
+    my $i;
+
+    glBegin(GL_LINE_STRIP); {
+        glColor3f(scolor($tri2d[1])) if ($options{color} > 0);
+        glVertex2f($tri2d[0],$tri2d[1]);
+        for ($i=2; $i<=(2*$options{xres}-2); $i=$i+2) { 
+            glColor3f(scolor($tri2d[$i+1])) if ($options{color} > 0);
+            glVertex2f($tri2d[$i],$tri2d[$i+1]);}
+    } glEnd();
+}
+
+
+# SUB DISPLAY (3D WIRE)
+sub display_3dwire {
+    my ($h,$i);
+    
+    for $h (0..($zsize-2)) {
+        glBegin(GL_LINE_STRIP); {
+
+            # first line
+            if ($h==0) {
+                for ($i=(3*$options{xres}-3); $i>=0; $i=$i-3) {
+                    glColor3f(scolor($tri3d[$i+1])) if ($options{color} > 0);
+                    glVertex3f($tri3d[$i],$tri3d[$i+1],$tri3d[$i+2]);
+                }
+            }
+
+            for ($i=0; $i<=(3*$options{xres}-4); $i=$i+3) {
+                my $basec = $i+1+3*$h*$options{xres};
+                # left behind
+                glColor3f(scolor($tri3d[$basec])) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec-1],$tri3d[$basec],$tri3d[$basec+1]);
+                # left ahead
+                glColor3f(scolor($tri3d[$basec+3*$options{xres}])) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec-1+3*$options{xres}],$tri3d[$basec+3*$options{xres}],$tri3d[$basec+1+3*$options{xres}]);
+                # rigth ahead
+                glColor3f(scolor($tri3d[$basec+3+3*$options{xres}])) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec+2+3*$options{xres}],$tri3d[$basec+3+3*$options{xres}],$tri3d[$basec+4+3*$options{xres}]);
+            }
+
+            # right behind
+            glColor3f(scolor($tri3d[3*$options{xres}-2+3*$h*$options{xres}])) if ($options{color} > 0);
+            glVertex3f($tri3d[3*$options{xres}-3+3*$h*$options{xres}],$tri3d[3*$options{xres}-2+3*$h*$options{xres}],$tri3d[3*$options{xres}-1+3*$h*$options{xres}]); 
+            # right ahead
+            glColor3f(scolor($tri3d[3*$options{xres}-2+3*$h*$options{xres}+3*$options{xres}])) if ($options{color} > 0);
+            glVertex3f($tri3d[3*$options{xres}-3+3*$h*$options{xres}+3*$options{xres}],$tri3d[3*$options{xres}-2+3*$h*$options{xres}+3*$options{xres}],$tri3d[3*$options{xres}-1+3*$h*$options{xres}+3*$options{xres}]); 
+        } glEnd();
+    }
+}
+
+
+# SUB DISPLAY (3D SOLID)
+sub display_3d {
+    my ($h,$i);
+
+    glBegin(GL_TRIANGLES);
+    {
+        for $h (0..($zsize-2)) {
+            for ($i=0; $i<=(3*$options{xres}-4); $i=$i+3) {
+                my $basec = $i+1+3*$h*$options{xres};
+                my @ltcolor;
+                my @rbcolor;
+                # left bottom
+                glColor3f(scolor($tri3d[$basec])) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec-1],$tri3d[$basec],$tri3d[$basec+1]);
+                # left top
+                if ($options{color} > 0) { @ltcolor=scolor($tri3d[$basec+3*$options{xres}]); glColor3f(@ltcolor) }
+                glVertex3f($tri3d[$basec+3*$options{xres}-1],$tri3d[$basec+3*$options{xres}],$tri3d[$basec+3*$options{xres}+1]); 
+                # right bottom
+                if ($options{color} > 0) { @rbcolor=scolor($tri3d[$basec+3]);glColor3f(@rbcolor);}
+                glVertex3f($tri3d[$basec+2],$tri3d[$basec+3],$tri3d[$basec+4]); 
+                # left top
+                glColor3f(@ltcolor) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec+3*$options{xres}-1],$tri3d[$basec+3*$options{xres}],$tri3d[$basec+3*$options{xres}+1]); 
+                # right top
+                glColor3f(scolor($tri3d[$basec+3*$options{xres}+3])) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec+3*$options{xres}+2],$tri3d[$basec+3*$options{xres}+3],$tri3d[$basec+3*$options{xres}+4]); 
+                # right bottom
+                glColor3f(@rbcolor) if ($options{color} > 0);
+                glVertex3f($tri3d[$basec+2],$tri3d[$basec+3],$tri3d[$basec+4]); 
+            }
+        }
+    } glEnd();
+}
+
+
+# SUB DISPLAY (AXIS)
+sub display_axis {
+    my $i;
+    
+    glColor3f(0.3,0.3,0.3);
+
+    if ($options{axis} == 1) {
+        if ($options{mode} <= 1) {
+            # 2D axis
+            glBegin(GL_LINES); {
+                for ($i=0; $i<=($options{xmax}); $i=$i+$options{ax_step}) {
+                    glVertex2f($i,(0-($options{ymax}-$options{ymin})*$options{ax_size}/2));
+                    glVertex2f($i,(0+($options{ymax}-$options{ymin})*$options{ax_size}/2));
+                }
+                for ($i=0; $i>=($options{xmin}); $i=$i-$options{ax_step}) {
+                    glVertex2f($i,(0-($options{ymax}-$options{ymin})*$options{ax_size}/2));
+                    glVertex2f($i,(0+($options{ymax}-$options{ymin})*$options{ax_size}/2));
+                }
+                for ($i=0; $i<=($options{ymax}); $i=$i+$options{ax_step}) {
+                    glVertex2f((0-($options{xmax}-$options{xmin})*$options{ax_size}/2),$i);
+                    glVertex2f((0+($options{xmax}-$options{xmin})*$options{ax_size}/2),$i);
+                }
+                for ($i=0; $i>=($options{ymin}); $i=$i-$options{ax_step}) {
+                    glVertex2f((0-($options{xmax}-$options{xmin})*$options{ax_size}/2),$i);
+                    glVertex2f((0+($options{xmax}-$options{xmin})*$options{ax_size}/2),$i);
+                }
+
+                glColor3f(0.4,0.4,0.4);
+                glVertex2f($options{xmin},0);
+                glVertex2f($options{xmax},0);
+                glVertex2f(0,$options{ymin});
+                glVertex2f(0,$options{ymax});
+            } glEnd();
+        }
+        else {
+            # 3D axis
+            glBegin(GL_LINES); {
+                for ($i=0; $i<=($options{xmax}); $i=$i+$options{ax_step}) {
+                    glVertex3f($i,0,(0-($options{zmax}-$options{zmin})*$options{ax_size}/2));
+                    glVertex3f($i,0,(0+($options{zmax}-$options{zmin})*$options{ax_size}/2));
+                }
+                for ($i=0; $i>=($options{xmin}); $i=$i-$options{ax_step}) {
+                    glVertex3f($i,0,(0-($options{zmax}-$options{zmin})*$options{ax_size}/2));
+                    glVertex3f($i,0,(0+($options{zmax}-$options{zmin})*$options{ax_size}/2));
+                }
+                for ($i=0; $i<=($options{zmax}); $i=$i+$options{ax_step}) {
+                    glVertex3f((0-($options{xmax}-$options{xmin})*$options{ax_size}/2),0,$i);
+                    glVertex3f((0+($options{xmax}-$options{xmin})*$options{ax_size}/2),0,$i);
+                }
+                for ($i=0; $i>=($options{zmin}); $i=$i-$options{ax_step}) {
+                    glVertex3f((0-($options{xmax}-$options{xmin})*$options{ax_size}/2),0,$i);
+                    glVertex3f((0+($options{xmax}-$options{xmin})*$options{ax_size}/2),0,$i);
+                }
+
+                glColor3f(0.4,0.4,0.4);
+                glVertex3f($options{xmin},0,0);
+                glVertex3f($options{xmax},0,0);
+                glVertex3f(0,$options{ymin},0);
+                glVertex3f(0,$options{ymax},0);
+                glVertex3f(0,0,$options{zmin});
+                glVertex3f(0,0,$options{zmax});
+            } glEnd();
+        }
+    }
+
+    elsif ($options{axis} == 2) {
+        # Base square
+        glBegin(GL_LINES); {
+            glVertex3f($options{xmin},0,$options{zmin});
+            glVertex3f($options{xmax},0,$options{zmin});
+            glVertex3f($options{xmin},0,$options{zmin});
+            glVertex3f($options{xmin},0,$options{zmax});
+            glVertex3f($options{xmin},0,$options{zmax});
+            glVertex3f($options{xmax},0,$options{zmax});
+            glVertex3f($options{xmax},0,$options{zmax});
+            glVertex3f($options{xmax},0,$options{zmin});
+        } glEnd();
+    }
+
+    elsif ($options{axis} == 3) {
+        # Base cube
+        glBegin(GL_LINES); {
+            #bottom square
+            glVertex3f($options{xmin},$options{ymin},$options{zmin});
+            glVertex3f($options{xmax},$options{ymin},$options{zmin});
+            glVertex3f($options{xmin},$options{ymin},$options{zmin});
+            glVertex3f($options{xmin},$options{ymin},$options{zmax});
+            glVertex3f($options{xmin},$options{ymin},$options{zmax});
+            glVertex3f($options{xmax},$options{ymin},$options{zmax});
+            glVertex3f($options{xmax},$options{ymin},$options{zmax});
+            glVertex3f($options{xmax},$options{ymin},$options{zmin});
+            #between
+            glVertex3f($options{xmin},$options{ymin},$options{zmin});
+            glVertex3f($options{xmin},$options{ymax},$options{zmin});
+            glVertex3f($options{xmin},$options{ymin},$options{zmax});
+            glVertex3f($options{xmin},$options{ymax},$options{zmax});
+            glVertex3f($options{xmax},$options{ymin},$options{zmin});
+            glVertex3f($options{xmax},$options{ymax},$options{zmin});
+            glVertex3f($options{xmax},$options{ymin},$options{zmax});
+            glVertex3f($options{xmax},$options{ymax},$options{zmax});
+            #top square
+            glVertex3f($options{xmin},$options{ymax},$options{zmin});
+            glVertex3f($options{xmax},$options{ymax},$options{zmin});
+            glVertex3f($options{xmin},$options{ymax},$options{zmin});
+            glVertex3f($options{xmin},$options{ymax},$options{zmax});
+            glVertex3f($options{xmin},$options{ymax},$options{zmax});
+            glVertex3f($options{xmax},$options{ymax},$options{zmax});
+            glVertex3f($options{xmax},$options{ymax},$options{zmax});
+            glVertex3f($options{xmax},$options{ymax},$options{zmin});
+        } glEnd();
+    }
+}
+
+
+# SCREENSHOT
+sub screenshot {
+    my $fname="$options{image_name}";
+    $fname =~ s/(.*)\.(.*)/$1/;
+    my $fext="$options{image_name}";
+    $fext =~ s/(.*)\.(.*)/$2/;
+    my $func=$yreal[$n];
+    $func =~ s/\$//g;
+    my $tres_sec = $options{tres}/$options{fps};
+    my $tframe = $tsize+1;
+    my $num = 1;
+    my $filename;
+
+    # take screenshot
+    if (!($options{save}) and ($options{image_name} =~ /\./)) {
+        $num++ while(-f ($filename=sprintf("$fname\_%.4d\.$fext",$num)) );
+        system("import -silent -window \"$options{wid}\" \"$filename\"");
+    }
+    elsif ($options{image_name} =~ /\./) {
+        $filename=sprintf("$fname\_%.4d\.$fext",$tframe);
+        system("rm $filename") if (-f $filename);
+        system("import -silent -window \"$options{wid}\" \"$filename\"");
+    }
+
+    # create info file
+    if ((! -f "$fname\_info.txt") and $options{info}) {
+        if(open(IMAGE,">$fname\_info.txt")){
+            print IMAGE "$fname\n";
+            print IMAGE "----------------\n\n";
+            print IMAGE "Function:          f(x,y,z) = $func \n\n";
+            print IMAGE "Window:\n";
+            print IMAGE "x Interval         \[ $options{xmin}  \-  $options{xmax} \] \n";
+            print IMAGE "y Interval         \[ $options{ymin}  \-  $options{ymax} \] \n";
+            print IMAGE "z Interval         \[ $options{zmin}  \-  $options{zmax} \] \n";
+            print IMAGE "t Interval         \[ $options{tmin}  \-  $options{tmax} \] \n\n";
+            print IMAGE "Math. Resolution:\n";
+            print IMAGE "x Resolution       $options{xres} \n";
+            print IMAGE "z Resolution       $options{zres} \n";
+            print IMAGE "t Resolution       $tres_sec","s \n";
+            print IMAGE "in Frames ($options{fps}fps)  $options{tres} \n\n";
+            print IMAGE "Output:\n";
+            print IMAGE "Resolution         $options{width}x$options{height} \n";
+            print IMAGE "Output mode        $options{mode} \n";
+            print IMAGE "Color mode         $options{color} \n";
+            print IMAGE "Axis mode          $options{axis} \n\n";
+            print IMAGE "Misc:\n";
+            print IMAGE "Color factor       $options{cfact} \n";
+            print IMAGE "Color constant     $options{cfact} \n";
+            print IMAGE "Axis Step          $options{ax_step} \n";
+            print IMAGE "Axis Size          $options{ax_size} \n";
+            print IMAGE "(Time frame/time   $tframe / $t) \n\n";
+            print IMAGE "Command line: \n";
+            print IMAGE "glgraph -mode $options{mode} -colors $options{color} -axis $options{axis} -ax_step $options{ax_step} -ax_size $options{ax_size} -xmin $options{xmin} -xmax $options{xmax} -ymin $options{ymin} -ymin $options{ymax} -zmin $options{xmin} -zmin $options{zmin} -xmin $options{tmin} -xmin $options{tmin} -xres $options{xres} -zres $options{zres} -tres $options{tres} -fps $options{fps} -geometry \"$options{width}x$options{height}\" -o \"$options{image_name}\" \'$func\'\n";
+            close(IMAGE);
+        }
+    }
+}
